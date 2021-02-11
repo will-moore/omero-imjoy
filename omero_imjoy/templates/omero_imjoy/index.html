@@ -157,7 +157,6 @@
     <div class="loading loading-lg floating" id="loading"></div>
     <div class="whiteboard" id="whiteboard">
         <img src="https://imjoy.io/static/img/imjoy-io-icon.svg" id="empty-img" />
-        <canvas id="canvas"></canvas>
     </div>
 
     <script>
@@ -320,7 +319,8 @@
         };
 
         document.addEventListener("DOMContentLoaded", async event => {
-            window.imjoyCore = await loadImJoyCore();
+            // pin the version
+            window.imjoyCore = await loadImJoyCore({version: "0.13.60"});
             imjoy = new imjoyCore.ImJoy({
                 imjoy_api: imjoy_api,
             });
@@ -350,29 +350,6 @@
                 document.getElementById("loading").style.display = "none";
                 return;
             }
-            window.loadPlugin = function (p) {
-                if (!p) return;
-                document.getElementById("loading").style.display = "block";
-                imjoy.pm
-                    .reloadPluginRecursively({ uri: p })
-                    .then(async plugin => {
-                        let config = {};
-                        if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
-                            config = await imjoy.pm.imjoy_api.showDialog(
-                                plugin,
-                                plugin.config
-                            );
-                        }
-                        await plugin.api.run({ config: config, data: {} });
-                        document.getElementById("loading").style.display = "none";
-                    })
-                    .catch(e => {
-                        console.error(e);
-                        alert(`failed to load the plugin, error: ${e}`);
-                        document.getElementById("loading").style.display = "none";
-                    });
-            };
-
             if (engine) {
                 try {
                     console.log("Loading Jupyter-Engine-Manager from Gist...");
@@ -390,40 +367,7 @@
                 }
             }
 
-            p = "https://github.com/will-moore/imjoy-starter/blob/master/plugins/omero_image_ij.imjoy.html"
-            // When loading the plugin locally:
-            // p = "http://localhost:8000/omero_image_ij.imjoy.html"
-
-            // When this is loaded, the "plugin_loaded" event fires (below)
-            window.loadPlugin(p)
-
-
-            function loadImageInPlugin(plugin) {
-                // OMERO Image ID
-                const open_image = getUrlParameter("open");
-                if (open_image) {
-                    console.log('src', open_image);
-                    var img = new Image();
-                    img.addEventListener('load', function() {
-                        var ctx = document.getElementById('canvas').getContext('2d');
-                        ctx.drawImage(img, 0, 0, img.width, img.height);
-                        var imageData = ctx.getImageData(0, 0, img.width, img.height);
-                        console.log('imageData', imageData)
-                        var buffer = imageData.data.buffer;  // ArrayBuffer
-                        plugin.api.openImageJ(buffer);
-                    }, false);
-                    img.src = open_image;
-                }
-            }
-
-
             imjoy.event_bus.on("plugin_loaded", plugin => {
-
-                // If we've loaded the omero_image_ij plugin, open image...
-                if (plugin.api.openImageJ) {
-                    loadImageInPlugin(plugin);
-                }
-
                 //reload the plugin menu
                 var plugin_menu = document.getElementById("plugin-menu");
                 plugin_menu.innerHTML = "";
@@ -444,6 +388,41 @@
             window.runPlugin = name => {
                 imjoy.pm.plugin_names[name].api.run({ config: {}, data: {} });
             };
+
+            // get OMERO Image ID
+            const open_image = getUrlParameter("open");
+            if (open_image) {
+                // Here we will calll the imjoy api directly from the core
+                // In this case, the first argument should be the caller plugin or null
+                const ij = await imjoy.pm.imjoy_api.createWindow(null, {src: "https://ij.imjoy.io"})
+                const img = new Image();
+                img.addEventListener('load', function() {
+                    const canvas = document.createElement('canvas')
+                    canvas.width = img.width
+                    canvas.height = img.height
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    const rgbaData = imageData.data;  // ArrayBuffer
+                    // convert RGBA to RGB
+                    const rgbData = new Uint8Array(new ArrayBuffer(img.height*img.width*3))
+                    for(let i=0;i<img.height;i++){
+                        for(let j=0;j<img.width;j++){
+                            const pos = i*img.width+j;
+                            rgbData[pos*3] = rgbaData[pos*4]
+                            rgbData[pos*3+1] = rgbaData[pos*4+1]
+                            rgbData[pos*3+2] = rgbaData[pos*4+2]
+                        }
+                    }
+                    // call viewImage api in ImageJ.JS
+                    ij.viewImage({_rtype: 'ndarray', _rdtype: 'uint8', _rshape: [img.width, img.height, 3], _rvalue: rgbData});
+                    document.getElementById("loading").style.display = "none";
+                }, false);
+                img.src = open_image;
+            }
+            else{
+                document.getElementById("loading").style.display = "none";
+            }
         });
         // fix mobile display
         window.onresize = () => {
