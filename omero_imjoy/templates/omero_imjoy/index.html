@@ -415,7 +415,7 @@
                         }
                     }
                     // call viewImage api in ImageJ.JS
-                    ij.viewImage({_rtype: 'ndarray', _rdtype: 'uint8', _rshape: [img.height, img.width, 3], _rvalue: rgbData});
+                    ij.viewImage({_rtype: 'ndarray', _rdtype: 'uint8', _rshape: [img.height, img.width, 3], _rvalue: rgbData.buffer});
                     document.getElementById("loading").style.display = "none";
                 }, false);
                 img.src = open_image;
