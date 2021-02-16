@@ -176,6 +176,16 @@
                 ? ""
                 : decodeURIComponent(results[1].replace(/\+/g, " "));
         }
+        // get URL param as list. e.g. ?open=1&open=2
+        function getUrlParameterList(name) {
+            name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+            var regex = new RegExp(name + "=([^#]*)");
+            var results = location.search.slice(1).split('&')
+                .map(search => regex.exec(search))
+                .filter(Boolean)
+                .map(r => r[1].replace(/\+/g, " "));
+            return results;
+        }
         var windows = {};
         function addWindow(w) {
             windows = windows || {};
@@ -320,7 +330,7 @@
 
         document.addEventListener("DOMContentLoaded", async event => {
             // pin the version
-            window.imjoyCore = await loadImJoyCore({version: "0.13.60"});
+            window.imjoyCore = await loadImJoyCore({ version: "0.13.60" });
             imjoy = new imjoyCore.ImJoy({
                 imjoy_api: imjoy_api,
             });
@@ -389,38 +399,86 @@
                 imjoy.pm.plugin_names[name].api.run({ config: {}, data: {} });
             };
 
+
+            let loadPlane = function(url) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.addEventListener('load', function () {
+                        console.log('loaded event...')
+                        const canvas = document.createElement('canvas')
+                        canvas.width = img.width
+                        canvas.height = img.height
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, img.width, img.height);
+                        const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                        const rgbaData = imageData.data;  // ArrayBuffer
+                        // convert RGBA to RGB
+                        const rgbData = new Uint8Array(new ArrayBuffer(img.height * img.width * 3))
+                        for (let i = 0; i < img.height; i++) {
+                            for (let j = 0; j < img.width; j++) {
+                                const pos = i * img.width + j;
+                                rgbData[pos * 3] = rgbaData[pos * 4]
+                                rgbData[pos * 3 + 1] = rgbaData[pos * 4 + 1]
+                                rgbData[pos * 3 + 2] = rgbaData[pos * 4 + 2]
+                            }
+                        }
+                        console.log('resolve...')
+                        resolve([rgbData, img.height, img.width]);
+                        // call viewImage api in ImageJ.JS
+                        // ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [img.height, img.width, 3], _rvalue: rgbData });
+                        // document.getElementById("loading").style.display = "none";
+                    }, false);
+                    console.log('img.src....', url);
+                    img.src = url;
+                });
+            }
+
             // get OMERO Image ID
-            const open_image = getUrlParameter("open");
-            if (open_image) {
+            const open_images = getUrlParameterList("open");
+            if (open_images.length > 0) {
                 // Here we will calll the imjoy api directly from the core
                 // In this case, the first argument should be the caller plugin or null
-                const ij = await imjoy.pm.imjoy_api.createWindow(null, {src: "https://ij.imjoy.io"})
-                const img = new Image();
-                img.addEventListener('load', function() {
-                    const canvas = document.createElement('canvas')
-                    canvas.width = img.width
-                    canvas.height = img.height
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, img.width, img.height);
-                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
-                    const rgbaData = imageData.data;  // ArrayBuffer
-                    // convert RGBA to RGB
-                    const rgbData = new Uint8Array(new ArrayBuffer(img.height*img.width*3))
-                    for(let i=0;i<img.height;i++){
-                        for(let j=0;j<img.width;j++){
-                            const pos = i*img.width+j;
-                            rgbData[pos*3] = rgbaData[pos*4]
-                            rgbData[pos*3+1] = rgbaData[pos*4+1]
-                            rgbData[pos*3+2] = rgbaData[pos*4+2]
-                        }
-                    }
-                    // call viewImage api in ImageJ.JS
-                    ij.viewImage({_rtype: 'ndarray', _rdtype: 'uint8', _rshape: [img.height, img.width, 3], _rvalue: rgbData.buffer});
-                    document.getElementById("loading").style.display = "none";
-                }, false);
-                img.src = open_image;
+                const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
+
+                open_images.forEach(open_image => {
+
+                    // const img = new Image();
+                    // img.addEventListener('load', function () {
+                    //     const canvas = document.createElement('canvas')
+                    //     canvas.width = img.width
+                    //     canvas.height = img.height
+                    //     const ctx = canvas.getContext('2d');
+                    //     ctx.drawImage(img, 0, 0, img.width, img.height);
+                    //     const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    //     const rgbaData = imageData.data;  // ArrayBuffer
+                    //     // convert RGBA to RGB
+                    //     const rgbData = new Uint8Array(new ArrayBuffer(img.height * img.width * 3))
+                    //     for (let i = 0; i < img.height; i++) {
+                    //         for (let j = 0; j < img.width; j++) {
+                    //             const pos = i * img.width + j;
+                    //             rgbData[pos * 3] = rgbaData[pos * 4]
+                    //             rgbData[pos * 3 + 1] = rgbaData[pos * 4 + 1]
+                    //             rgbData[pos * 3 + 2] = rgbaData[pos * 4 + 2]
+                    //         }
+                    //     }
+
+                    loadPlane(open_image).then(imgData => {
+                        const rgbData = imgData[0];
+                        const height = imgData[1];
+                        const width = imgData[2];
+                        console.log('rgbData loaded...');
+                        ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [2, height / 2, width, 3], _rvalue: rgbData.buffer });
+                        document.getElementById("loading").style.display = "none";
+                        
+                    });
+
+                        // call viewImage api in ImageJ.JS
+                        // shape is [z, y, x, channel]  (channel must be 1 or 3)
+                         // }, false);
+                    // img.src = open_image;
+                });
             }
-            else{
+            else {
                 document.getElementById("loading").style.display = "none";
             }
         });
