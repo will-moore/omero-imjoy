@@ -356,10 +356,40 @@
             await imjoy.start({ workspace: workspace });
             console.log("ImJoy started: ", imjoy);
             let p = getUrlParameter("plugin") || getUrlParameter("p");
+            console.log({p, workspace});
             if (!p && workspace) {
                 document.getElementById("loading").style.display = "none";
                 return;
             }
+            window.loadPlugin = function(p) {
+                if (!p)
+                    p = prompt(
+                    `Please type a ImJoy plugin URI to start or pass it with ${window
+                        .location.href + "?plugin=PLUGIN_URI"}`,
+                    ""
+                    );
+                if (!p) return;
+                document.getElementById("loading").style.display = "block";
+                imjoy.pm
+                    .reloadPluginRecursively({ uri: p })
+                    .then(async plugin => {
+                    let config = {};
+                    if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+                        config = await imjoy.pm.imjoy_api.showDialog(
+                        plugin,
+                        plugin.config
+                        );
+                    }
+                    await plugin.api.run({ config: config, data: {} });
+                    document.getElementById("loading").style.display = "none";
+                    })
+                    .catch(e => {
+                    console.error(e);
+                    alert(`failed to load the plugin, error: ${e}`);
+                    document.getElementById("loading").style.display = "none";
+                    });
+            };
+
             if (engine) {
                 try {
                     console.log("Loading Jupyter-Engine-Manager from Gist...");
@@ -377,6 +407,10 @@
                 }
             }
 
+            if (p) {
+                window.loadPlugin(p);
+            }
+
             imjoy.event_bus.on("plugin_loaded", plugin => {
                 //reload the plugin menu
                 var plugin_menu = document.getElementById("plugin-menu");
@@ -384,7 +418,7 @@
                 for (let pn in imjoy.pm.plugin_names) {
                     plugin_menu.innerHTML =
                         `
-                    <li class="menu-item"><a href="#" onclick="runPlugin('${pn}')">${pn}</a></li>
+                    <li class="menu-item"><a href="#" onclick='runPlugin("${pn.replaceAll("'", "`")}")'>${pn}</a></li>
                     ` + plugin_menu.innerHTML;
                 }
                 plugin_menu.innerHTML =
@@ -396,7 +430,7 @@
             });
 
             window.runPlugin = name => {
-                imjoy.pm.plugin_names[name].api.run({ config: {}, data: {} });
+                imjoy.pm.plugin_names[name.replaceAll("`", "'")].api.run({ config: {}, data: {} });
             };
 
 
@@ -474,6 +508,14 @@
 
                     const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
 
+                    async function saveImage() {
+                        console.log("saveImage...");
+                        const img = await ij.getImage({format: 'ndarray', all: true})
+                        console.log('img', img);
+                        // img {_rtype: "ndarray", _rvalue: ArrayBuffer(281880), _rshape: Array(3), _rdtype: "uint8"}
+                    }
+                    ij.addMenuItem({"label": "Save Image to OMERO", "callback": saveImage})
+
                     const sizeX = imgData.size.width;
                     const sizeY = imgData.size.height;
                     const sizeZ = imgData.size.z;
@@ -509,7 +551,9 @@
             // Use ?image=1 to open an OMERO Image
             const image_ids = getUrlParameterList("image");
 
-            handleImageIds(image_ids);
+            if (image_ids.length > 0) {
+                handleImageIds(image_ids);
+            }
 
             // Use ?open=image_url with a full path to a rgb image
             const open_images = getUrlParameterList("open");
