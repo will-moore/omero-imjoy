@@ -474,22 +474,30 @@
 
                     const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
 
-                    const sizeZ = imgData.size.z;
                     const sizeX = imgData.size.width;
                     const sizeY = imgData.size.height;
+                    const sizeZ = imgData.size.z;
+                    const sizeT = imgData.size.t;
                     console.log('sizeZ', sizeZ);
-                    // load each Z-plane
-                    const planeUrls = range(sizeZ).map(z => getPlaneUrl(image_id, z, 0));
-                    console.log('planeUrls', planeUrls);
+                    console.log('sizeT', sizeT);
+                    if (sizeZ > 1 && sizeT > 1) {
+                        // Doesn't seem to work if you pass a 5D array to ij.viewImage()
+                        alert("Multi-Z AND Multi-T not yet working.")
+                        return;
+                    }
+                    const stackSize = (sizeZ > 1) ? sizeZ : sizeT;
+                    // load each Z/T plane
+                    const planeUrls = range(sizeT).flatMap(t => range(sizeZ).map(z => getPlaneUrl(image_id, z, t)));
+                    console.log('Loading planes...', planeUrls[0], '....', planeUrls[planeUrls.length-1]);
                     const promises = planeUrls.map(url => loadPlane(url));
                     Promise.all(promises).then((planes) => {
                         // concatenate arrays....
                         const planeData = planes.map(p => p[0]);
-                        console.log('planeData', planeData.map(p => p.length));
+                        console.log('loaded', planeData.length, 'planes');
                         const stackedPlanes = mergeArrays(planeData);
                         console.log('stackedPlanes', stackedPlanes.length);
 
-                        ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [sizeZ, sizeY, sizeX, 3], _rvalue: stackedPlanes.buffer });
+                        ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [stackSize, sizeY, sizeX, 3], _rvalue: stackedPlanes.buffer });
                         document.getElementById("loading").style.display = "none";
                     });
                 // });
