@@ -589,9 +589,10 @@
                         channels.map(c => zarr_arr.getRawChunk([0, c, 0, 0, 0]))
                     );
                     console.log('zarrData', zarrData)
-                    const zarrPlanes = mergeArrays(zarrData.map(d => d.data));
 
-                    // Need to interleave the channels in RGB buffer...
+                    const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
+
+                    // To view as RGB, need to interleave the channels in RGB buffer...
                     const rgb = new Uint8ClampedArray(3 * zarrData[0].data.length).fill(0);
                     let offset = 0;
                     for (let i = 0; i < zarrData[0].data.length; i++) {
@@ -600,13 +601,13 @@
                         rgb[offset + 2] = zarrData[2].data[i];
                         offset += 3;
                     }
-                    console.log('rgb', rgb);
-                    console.log('zarrPlanes', zarrPlanes);
-
-                    const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
-                    // ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [1, sizeY, sizeX, 3], _rvalue: rgb.buffer });
+                    setTimeout(() => {
+                        // RGB doesn't work if ij also opens a 3 channel image at the same time, as below
+                        ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [sizeY, sizeX, 3], _rvalue: rgb.buffer });
+                    }, 1000);
 
                     // 3 channels separately
+                    const zarrPlanes = mergeArrays(zarrData.map(d => d.data));
                     ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [3, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
 
                     document.getElementById("loading").style.display = "none";
