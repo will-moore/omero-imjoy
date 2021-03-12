@@ -1,0 +1,79 @@
+
+<html>
+
+
+<body>
+    <canvas id="canvas" width="500" height="500"></canvas>
+    <script>
+    /* Code based on https://observablehq.com/@manzt/using-zarr-lite */
+
+    async function getStore() {
+        const url = 'https://unpkg.com/@manzt/zarr-lite/httpStore.js';
+        const {
+            default: HTTPStore
+        } = await import(url);
+        return HTTPStore;
+    }
+
+    async function draw_scan(z_arr, channels = [0, 1]) {
+        // Fetch the 2D pixel arrays for each channel
+        const [r, g] = await Promise.all(
+            channels.map(c => z_arr.getRawChunk([0, c, 0, 0, 0]))
+        );
+        // Need to interleave the channels in RGBA buffer...
+        const rgba = new Uint8ClampedArray(4 * r.data.length).fill(0);
+        let offset = 0;
+        for (let i = 0; i < r.data.length; i++) {
+            rgba[offset] = r.data[i];
+            rgba[offset + 1] = g.data[i];
+            rgba[offset + 3] = 255; // alpha
+            offset += 4;
+        }
+
+        // Create image and draw to canvas
+        const [height, width] = z_arr.chunks.slice(-2);
+        const img = new ImageData(rgba, width, height);
+
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+
+        // const context = DOM.context2d(img.width / 2, img.height / 2);
+        ctx.putImageData(img, 0, 0);
+        // return context.canvas;
+    }
+
+    async function run() {
+        zarr = await import('https://unpkg.com/@manzt/zarr-lite/index.js')
+
+        HTTPStore = await getStore()
+        // const url = "https://s3.embassy.ebi.ac.uk/idr/zarr/v0.1/6001240.zarr"
+        const url = "/imjoy/zarr/{{ iid }}/"
+
+        async function loadPyramid() {
+            const store = new HTTPStore(url); // can be _any_ zarr store
+            const rootAttrs = await zarr.getJson(store, '.zattrs');
+            let paths = [];
+            if ('multiscales' in rootAttrs) {
+                const {
+                    datasets
+                } = rootAttrs.multiscales[0];
+                paths = datasets.map(d => d.path);
+            }
+            const p = paths.map(path => zarr.openArray({
+                store,
+                path
+            }));
+            return Promise.all(p);
+        }
+
+        const pyramid = await loadPyramid();
+
+        draw_scan(pyramid[0])
+    }
+
+    run()
+
+    </script>
+
+</body>
+</html>

@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- From https://github.com/imjoy-team/imjoy-core/blob/master/src/core-example.html -->
 <html lang="en">
 
 <head>
@@ -160,6 +161,33 @@
     </div>
 
     <script>
+
+        //https://stackoverflow.com/questions/12710001/how-to-convert-uint8-array-to-base64-encoded-string
+        function Uint8ToString(u8a) {
+            var CHUNK_SZ = 0x8000;
+            var c = [];
+            for (var i = 0; i < u8a.length; i += CHUNK_SZ) {
+                c.push(String.fromCharCode.apply(null, u8a.subarray(i, i + CHUNK_SZ)));
+            }
+            return c.join("");
+        }
+        
+        function getCookie(name) {
+            var cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                    var cookie = cookies[i].trim();
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
         function openDialog() {
             document.getElementById("dialog-container").classList.add("active");
         }
@@ -462,6 +490,14 @@
                 });
             }
 
+            async function getStore() {
+                const url = 'https://unpkg.com/@manzt/zarr-lite/httpStore.js';
+                const {
+                    default: HTTPStore
+                } = await import(url);
+                return HTTPStore;
+            }
+
             async function fetchJSON(url) {
                 const response = await fetch(url);
                 const data = await response.json();
@@ -506,20 +542,12 @@
                     const imgData = await fetchJSON(url);
                     console.log(imgData);
 
-                    const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
-
-                    async function saveImage() {
-                        console.log("saveImage...");
-                        const img = await ij.getImage({format: 'ndarray', all: true})
-                        console.log('img', img);
-                        // img {_rtype: "ndarray", _rvalue: ArrayBuffer(281880), _rshape: Array(3), _rdtype: "uint8"}
-                    }
-                    ij.addMenuItem({"label": "Save Image to OMERO", "callback": saveImage})
-
                     const sizeX = imgData.size.width;
                     const sizeY = imgData.size.height;
                     const sizeZ = imgData.size.z;
                     const sizeT = imgData.size.t;
+                    // TODO: don't load all channels
+                    const sizeC = imgData.channels.length;
                     console.log('sizeZ', sizeZ);
                     console.log('sizeT', sizeT);
                     if (sizeZ > 1 && sizeT > 1) {
@@ -527,22 +555,61 @@
                         alert("Multi-Z AND Multi-T not yet working.")
                         return;
                     }
-                    const stackSize = (sizeZ > 1) ? sizeZ : sizeT;
-                    // load each Z/T plane
-                    const planeUrls = range(sizeT).flatMap(t => range(sizeZ).map(z => getPlaneUrl(image_id, z, t)));
-                    console.log('Loading planes...', planeUrls[0], '....', planeUrls[planeUrls.length-1]);
-                    const promises = planeUrls.map(url => loadPlane(url));
-                    Promise.all(promises).then((planes) => {
-                        // concatenate arrays....
-                        const planeData = planes.map(p => p[0]);
-                        console.log('loaded', planeData.length, 'planes');
-                        const stackedPlanes = mergeArrays(planeData);
-                        console.log('stackedPlanes', stackedPlanes.length);
 
-                        ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [stackSize, sizeY, sizeX, 3], _rvalue: stackedPlanes.buffer });
-                        document.getElementById("loading").style.display = "none";
-                    });
-                // });
+                    const stackSize = (sizeZ > 1) ? sizeZ : sizeT;
+                
+                    const zarr = await import('https://unpkg.com/@manzt/zarr-lite/index.js')
+
+                    const HTTPStore = await getStore()
+                    // const url = "https://s3.embassy.ebi.ac.uk/idr/zarr/v0.1/6001240.zarr"
+                    const zarr_url = `/imjoy/zarr/${ image_id }/`
+
+                    async function loadPyramid() {
+                        const store = new HTTPStore(zarr_url);
+                        const rootAttrs = await zarr.getJson(store, '.zattrs');
+                        console.log('rootAttrs', rootAttrs);
+                        let paths = [];
+                        if ('multiscales' in rootAttrs) {
+                            const {
+                                datasets
+                            } = rootAttrs.multiscales[0];
+                            paths = datasets.map(d => d.path);
+                        }
+                        const p = paths.map(path => zarr.openArray({
+                            store,
+                            path
+                        }));
+                        return Promise.all(p);
+                    }
+
+                    const pyramid = await loadPyramid();
+                    const zarr_arr = pyramid[0]
+                    const channels = [0, 1, 2]
+                    const zarrData = await Promise.all(
+                        channels.map(c => zarr_arr.getRawChunk([0, c, 0, 0, 0]))
+                    );
+                    console.log('zarrData', zarrData)
+                    const zarrPlanes = mergeArrays(zarrData.map(d => d.data));
+
+                    // Need to interleave the channels in RGB buffer...
+                    const rgb = new Uint8ClampedArray(3 * zarrData[0].data.length).fill(0);
+                    let offset = 0;
+                    for (let i = 0; i < zarrData[0].data.length; i++) {
+                        rgb[offset] = zarrData[0].data[i];
+                        rgb[offset + 1] = zarrData[1].data[i];
+                        rgb[offset + 2] = zarrData[2].data[i];
+                        offset += 3;
+                    }
+                    console.log('rgb', rgb);
+                    console.log('zarrPlanes', zarrPlanes);
+
+                    const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
+                    // ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [1, sizeY, sizeX, 3], _rvalue: rgb.buffer });
+
+                    // 3 channels separately
+                    ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint8', _rshape: [3, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
+
+                    document.getElementById("loading").style.display = "none";
             }
 
             // Always load ImageJ.JS...
