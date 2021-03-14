@@ -33,6 +33,11 @@ import os
 from omeroweb.webclient.decorators import login_required
 from omeroweb.webgateway.marshal import channelMarshal
 
+from omero.model.enums import PixelsTypeint8, PixelsTypeuint8, PixelsTypeint16
+from omero.model.enums import PixelsTypeuint16, PixelsTypeint32
+from omero.model.enums import PixelsTypeuint32, PixelsTypefloat
+from omero.model.enums import PixelsTypecomplex, PixelsTypedouble
+
 # @login_required()
 def index(request, conn=None, **kwargs):
     """
@@ -82,10 +87,24 @@ def zarr_zarray(request, iid, level, conn=None, **kwargs):
     shape = [getattr(image, 'getSize' + dim)() for dim in ('TCZYX')]
     print('shape', shape)
     chunks = (1, 1, 1, shape[3], shape[4])
+
+    ptype = image.getPrimaryPixels().getPixelsType().getValue()
+    pixelTypes = {
+        PixelsTypeint8: np.int8,
+        PixelsTypeuint8: np.uint8,
+        PixelsTypeint16: np.int16,
+        PixelsTypeuint16: np.uint16,
+        PixelsTypeint32: np.int32,
+        PixelsTypeuint32: np.uint32,
+        PixelsTypefloat: np.float32,
+        PixelsTypedouble: np.float64
+    }
+    np_type = pixelTypes[ptype]
+
     rsp = {"data": "fail"}
     with tempfile.TemporaryDirectory() as tmpdirname:
         # writes zarray
-        zarr.open_array(tmpdirname, mode='w', shape=tuple(shape), chunks=chunks)
+        zarr.open_array(tmpdirname, mode='w', shape=tuple(shape), chunks=chunks, dtype=np_type)
 
         # reads zarray
         zattrs_path = os.path.join(tmpdirname, '.zarray')
@@ -111,7 +130,7 @@ def zarr_chunk(request, iid, level, t, c, z, y, x, conn=None, **kwargs):
     chunk_name = ".".join([str(dim) for dim in [t, c, z, y, x]])
     with tempfile.TemporaryDirectory() as tmpdirname:
         # write chunk
-        zarr_array = zarr.open_array(tmpdirname, mode='w', shape=tuple(shape), chunks=chunks)
+        zarr_array = zarr.open_array(tmpdirname, mode='w', shape=tuple(shape), chunks=chunks, dtype=plane.dtype)
         zarr_array[t, c, z, :, :] = plane
 
         # reads zarray
