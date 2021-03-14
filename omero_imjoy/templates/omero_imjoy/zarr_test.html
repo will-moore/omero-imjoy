@@ -20,6 +20,7 @@
         const [r, g] = await Promise.all(
             channels.map(c => z_arr.getRawChunk([0, c, 0, 0, 0]))
         );
+        console.log('r', r);
         // Need to interleave the channels in RGBA buffer...
         const rgba = new Uint8ClampedArray(4 * r.data.length).fill(0);
         let offset = 0;
