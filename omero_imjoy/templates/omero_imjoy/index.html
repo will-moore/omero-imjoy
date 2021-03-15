@@ -50,78 +50,12 @@
     <link rel="stylesheet" href="https://static.imjoy.io/spectre.css/spectre-exp.min.css" />
     <link rel="stylesheet" href="https://static.imjoy.io/spectre.css/spectre-icons.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.15.3/axios.min.js"></script>
-    <style>
-        html,
-        body {
-            height: 100%;
-            width: 100%;
-            overflow-y: hidden;
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-            -webkit-transform: translate3d(0, 0, 0);
-            /* Disables pull-to-refresh but allows overscroll glow effects. */
-            overscroll-behavior-y: contain;
-            overscroll-behavior-x: none;
-            position: fixed;
-            overflow-wrap: break-word;
-        }
 
-        .navbar .navbar-brand {
-            font-size: 1.2rem;
-        }
-
-        .whiteboard {
-            width: 100%;
-            max-width: 100%;
-            max-height: 100%;
-            min-height: 50vh;
-        }
-
-        .window_id {
-            width: 100%;
-            height: 100%;
-        }
-
-        .site-title-small {
-            vertical-align: bottom;
-            margin-left: 3px;
-            height: 32px;
-        }
-
-        .pointer {
-            cursor: pointer;
-        }
-
-        #empty-img {
-            width: 128px;
-            position: absolute !important;
-            left: calc(50% - 64px) !important;
-            top: calc(40% - 64px) !important;
-        }
-
-        .floating {
-            position: absolute !important;
-            left: calc(50% - 2px) !important;
-            top: calc(39% - 100px) !important;
-            z-index: 999;
-        }
-
-        #windows-menu {
-            position: absolute;
-            top: 3px;
-            right: 3px;
-        }
-
-        .more-btn {
-            border: transparent;
-            background-color: transparent;
-        }
-
-        .more-btn:hover {
-            border: #0a52eeea;
-            background-color: #ffffff91;
-        }
-    </style>
+    <!-- Relative links allows testing without Django -->
+    <!-- When served by Django, the URLs will be updated -->
+    <script src="../../static/omero_imjoy/util.js"></script>
+    <script src="../../static/omero_imjoy/imjoy.js"></script>
+    <link rel="stylesheet" href="../../static/omero_imjoy/imjoy.css">
 </head>
 
 <body>
@@ -161,189 +95,6 @@
     </div>
 
     <script>
-        function getCookie(name) {
-            var cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                var cookies = document.cookie.split(';');
-                for (var i = 0; i < cookies.length; i++) {
-                    var cookie = cookies[i].trim();
-                    // Does this cookie string begin with the name we want?
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-
-        function openDialog() {
-            document.getElementById("dialog-container").classList.add("active");
-        }
-
-        function closeDialog() {
-            document.getElementById("dialog-container").classList.remove("active");
-        }
-
-        function getUrlParameter(name) {
-            name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-            var regex = new RegExp("[\\?&]" + name + "=([^&#]*)");
-            var results = regex.exec(location.search);
-            return results === null
-                ? ""
-                : decodeURIComponent(results[1].replace(/\+/g, " "));
-        }
-        // get URL param as list. e.g. ?open=1&open=2
-        function getUrlParameterList(name) {
-            name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
-            var regex = new RegExp(name + "=([^#]*)");
-            var results = location.search.slice(1).split('&')
-                .map(search => regex.exec(search))
-                .filter(Boolean)
-                .map(r => r[1].replace(/\+/g, " "));
-            return results;
-        }
-        var windows = {};
-        function addWindow(w) {
-            windows = windows || {};
-            windows[w.window_id] = w;
-            var title = w.name,
-                id = w.window_id;
-            document.getElementById("windows-menu").innerHTML =
-                `
-            <span class="chip pointer window-chip" id="header_${id}" onclick="selectWindow('${id}')">
-                ${title}
-                <a href="#" onclick="removeWindow('${id}')" class="btn btn-clear" aria-label="Close" role="button"></a>
-            </span>` + document.getElementById("windows-menu").innerHTML;
-
-            document.getElementById("whiteboard").innerHTML =
-                `
-                <div class="window_id" id="${id}"></div>
-            ` + document.getElementById("whiteboard").innerHTML;
-            window.onresize();
-            updateWindowChips();
-            selectWindow(id);
-        }
-
-        function updateWindowChips() {
-            // only display when there is more than one window open
-            if (Object.keys(windows).length > 1) {
-                var ws = document.querySelectorAll(".window-chip");
-                for (let w of ws) {
-                    w.style.display = "inline-flex";
-                }
-            } else {
-                const keys = Object.keys(windows);
-                if (
-                    keys.length >= 1 &&
-                    (windows[keys[0]].standalone || windows[keys[0]].fullscreen)
-                )
-                    var ws = document.querySelectorAll(".window-chip");
-                if (ws) {
-                    for (let w of ws) {
-                        w.style.display = "none";
-                    }
-                }
-            }
-        }
-
-        async function removeWindow(id) {
-            if (windows[id]) {
-                try {
-                    await windows[id].close();
-                } finally {
-                    delete windows[id];
-                    updateWindowChips();
-                }
-            }
-            document
-                .getElementById("windows-menu")
-                .removeChild(document.getElementById("header_" + id));
-            document
-                .getElementById("whiteboard")
-                .removeChild(document.getElementById(id));
-            if (document.getElementById("whiteboard").children.length === 1) {
-                document.getElementById("empty-img").style.display = "block";
-            }
-        }
-
-        function selectWindow(id) {
-            if (!document.getElementById(id)) return;
-            for (let c of document.getElementById("whiteboard").children) {
-                if (c.id !== "site-title") {
-                    c.style.display = "none";
-                }
-            }
-            for (let c of document.getElementById("windows-menu").children)
-                c.classList.remove("active");
-            selected_window = id;
-            document.getElementById(id).style.display = "block";
-            document.getElementById("header_" + id).classList.add("active");
-        }
-
-        var selected_window = null;
-        var imjoy = null;
-
-        var imjoy_api = {
-            showMessage(plugin, info, duration) {
-                console.log(info);
-            },
-            showProgress(plugin, progress) {
-                if (progress < 1) progress = progress * 100;
-                document.getElementById("progress").value = progress;
-                if (progress <= 0) {
-                    document.getElementById("progress").style.display = "none";
-                } else {
-                    document.getElementById("progress").style.display = "block";
-                }
-            },
-            showDialog(_plugin, config) {
-                return new Promise((resolve, reject) => {
-                    document.getElementById("window-dialog-container").innerHTML = "";
-                    if (config.ui) {
-                        openDialog();
-                        const joy_config = {
-                            container: document.getElementById("window-dialog-container"),
-                            init: config.ui || "", //"{id:'localizationWorkflow', type:'ops'} " + // a list of ops
-                            data: config.data, // || Joy.loadFromURL(),
-                            modules: config.modules || ["instructions", "math"],
-                            onexecute: config.onexecute,
-                            onupdate: config.onupdate,
-                        };
-                        try {
-                            new imjoyCore.Joy(joy_config);
-                        } catch (e) {
-                            console.error("error occured when loading the workflow", e);
-                            joy_config.data = "";
-                            new imjoyCore.Joy(joy_config);
-                            throw e;
-                        }
-                    } else if (config.type) {
-                        openDialog();
-                        config.window_id = "window-dialog-container";
-                        config.standalone = true;
-                        if (config.type.startsWith("imjoy/")) {
-                            config.render = wconfig => { };
-                        }
-                        setTimeout(() => {
-                            imjoy.pm
-                                .createWindow(null, config)
-                                .then(api => {
-                                    const _close = api.close;
-                                    api.close = async () => {
-                                        await _close();
-                                        closeDialog();
-                                    };
-                                    resolve(api);
-                                })
-                                .catch(reject);
-                        }, 0);
-                    } else {
-                        alert("Unsupported dialog type.");
-                    }
-                });
-            },
-        };
 
         document.addEventListener("DOMContentLoaded", async event => {
             // pin the version
@@ -451,47 +202,6 @@
             };
 
 
-            async function getStore() {
-                const url = 'https://unpkg.com/@manzt/zarr-lite/httpStore.js';
-                const {
-                    default: HTTPStore
-                } = await import(url);
-                return HTTPStore;
-            }
-
-            async function fetchJSON(url) {
-                const response = await fetch(url);
-                const data = await response.json();
-                return data;
-            }
-
-            function getBaseUrl() {
-                return window.location.href.split('/imjoy/')[0];
-            }
-
-            function range(length) {
-                return Array.from({ length }, (_, i) => i);
-            }
-
-            function mergeArrays(arrays) {
-                // Get the total length of all arrays.
-                let length = 0;
-                arrays.forEach(item => {
-                    length += item.length;
-                });
-
-                // Create a new array with total length and merge all source arrays.
-                // Use first Array.constructor - output Array will be same type
-                // e.g. Int16Array -> Int16Array
-                let mergedArray = new arrays[0].constructor(length);
-                let offset = 0;
-                arrays.forEach(item => {
-                    mergedArray.set(item, offset);
-                    offset += item.length;
-                });
-                return mergedArray;
-            }
-
             async function handleImageIds(image_ids) {
                 // image_ids.forEach((image_id) => {
                 const image_id = image_ids[0];
@@ -551,8 +261,6 @@
                 document.getElementById("loading").style.display = "none";
             }
 
-            // Always load ImageJ.JS...
-            // const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
 
             // Use ?image=1 to open an OMERO Image
             const image_ids = getUrlParameterList("image");

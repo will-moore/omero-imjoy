@@ -43,7 +43,12 @@ def index(request, conn=None, **kwargs):
     """
     OMERO ImJoy Home page 
     """
-    return render(request, 'omero_imjoy/index.html', {})
+    template = loader.get_template('omero_imjoy/index.html')
+    html = template.render({}, request)
+    # update links to static files
+    static_dir = static.static('omero_imjoy/')
+    html = html.replace('../../static/omero_imjoy/', static_dir)
+    return HttpResponse(html)
 
 
 def test(request, iid):
