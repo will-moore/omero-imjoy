@@ -25,4 +25,4 @@ This app is a plugin of OMERO.web and needs to be installed in the same environm
     $ cd omero-imjoy
     $ python -m http.server
 
-Go to http://localhost:8000/omero_imjoy/templates/omero_imjoy/index.html?image=1
+Go to http://localhost:8000/omero_imjoy/templates/omero_imjoy/index.html?source=https://s3.embassy.ebi.ac.uk/idr/zarr/v0.1/6001240.zarr

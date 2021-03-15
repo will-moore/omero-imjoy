@@ -150,3 +150,119 @@ var imjoy_api = {
     },
 };
 
+
+document.addEventListener("DOMContentLoaded", async event => {
+    // pin the version
+    window.imjoyCore = await loadImJoyCore({ version: "0.13.60" });
+    imjoy = new imjoyCore.ImJoy({
+        imjoy_api: imjoy_api,
+    });
+    imjoy.event_bus.on("show_message", msg => {
+        console.log(msg);
+    });
+    imjoy.event_bus.on("add_window", async w => {
+        if (w.fullscreen || w.standalone) {
+            document.querySelector(".navbar").style.height = "2px";
+            document.getElementById("logo").style.display = "none";
+            // document.getElementById("windows-menu").style.display = "none";
+        } else {
+            document.querySelector(".navbar").style.height = "32px";
+            document.getElementById("logo").style.display = "flex";
+        }
+        addWindow(w);
+    });
+    const workspace = getUrlParameter("workspace") || getUrlParameter("w");
+    const token = getUrlParameter("token") || getUrlParameter("t");
+    const engine = getUrlParameter("engine") || getUrlParameter("e");
+
+
+    await imjoy.start({ workspace: workspace });
+    console.log("ImJoy started: ", imjoy);
+    let p = getUrlParameter("plugin") || getUrlParameter("p");
+    console.log({ p, workspace });
+    if (!p && workspace) {
+        document.getElementById("loading").style.display = "none";
+        return;
+    }
+    window.loadPlugin = function (p) {
+        if (!p)
+            p = prompt(
+                `Please type a ImJoy plugin URI to start or pass it with ${window
+                    .location.href + "?plugin=PLUGIN_URI"}`,
+                ""
+            );
+        if (!p) return;
+        document.getElementById("loading").style.display = "block";
+        imjoy.pm
+            .reloadPluginRecursively({ uri: p })
+            .then(async plugin => {
+                let config = {};
+                if (plugin.config.ui && plugin.config.ui.indexOf("{") > -1) {
+                    config = await imjoy.pm.imjoy_api.showDialog(
+                        plugin,
+                        plugin.config
+                    );
+                }
+                await plugin.api.run({ config: config, data: {} });
+                document.getElementById("loading").style.display = "none";
+            })
+            .catch(e => {
+                console.error(e);
+                alert(`failed to load the plugin, error: ${e}`);
+                document.getElementById("loading").style.display = "none";
+            });
+    };
+
+    if (engine) {
+        try {
+            console.log("Loading Jupyter-Engine-Manager from Gist...");
+            await imjoy.pm.reloadPluginRecursively({
+                uri:
+                    "https://imjoy-team.github.io/jupyter-engine-manager/Jupyter-Engine-Manager.imjoy.html",
+            });
+            console.log("Jupyter-Engine-Manager loaded.");
+            const factory = imjoy.em.getFactory("Jupyter-Engine");
+            await factory.addEngine({ url: engine, token: token });
+            console.log("plugin engine added:", engine);
+        } catch (e) {
+            console.error(e);
+            alert(`Failed to connect to the engine: ${e}`);
+        }
+    }
+
+    if (p) {
+        window.loadPlugin(p);
+    }
+
+    imjoy.event_bus.on("plugin_loaded", plugin => {
+        //reload the plugin menu
+        var plugin_menu = document.getElementById("plugin-menu");
+        plugin_menu.innerHTML = "";
+        for (let pn in imjoy.pm.plugin_names) {
+            plugin_menu.innerHTML =
+                `
+                    <li class="menu-item"><a href="#" onclick='runPlugin("${pn.replaceAll("'", "`")}")'>${pn}</a></li>
+                    ` + plugin_menu.innerHTML;
+        }
+        plugin_menu.innerHTML =
+            plugin_menu.innerHTML +
+            '<li class="menu-item"><a href="#" onclick="loadPlugin()"><i class="icon icon-plus"></i>&nbsp;Load Plugin</a></li>';
+        plugin_menu.innerHTML =
+            plugin_menu.innerHTML +
+            '<li class="menu-item"><a href="#" onclick="window.onresize()"><i class="icon icon-stop"></i>&nbsp;Cancel</a></li>';
+    });
+
+    window.runPlugin = name => {
+        imjoy.pm.plugin_names[name.replaceAll("`", "'")].api.run({ config: {}, data: {} });
+    };
+});
+
+
+// fix mobile display
+window.onresize = () => {
+    document.body.height = window.innerHeight;
+    document
+        .getElementById("whiteboard")
+        .style.setProperty("height", window.innerHeight + "px", "important");
+};
+window.onresize();

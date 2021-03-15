@@ -50,11 +50,3 @@ function mergeArrays(arrays) {
     });
     return mergedArray;
 }
-
-async function getStore() {
-    const url = 'https://unpkg.com/@manzt/zarr-lite/httpStore.js';
-    const {
-        default: HTTPStore
-    } = await import(url);
-    return HTTPStore;
-}
