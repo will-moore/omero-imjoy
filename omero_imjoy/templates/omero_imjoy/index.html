@@ -136,17 +136,37 @@
                 let [sizeT, sizeC, sizeZ, sizeY, sizeX] = zarr_arr.shape;
 
                 // FIXME: Ignore sizeT for now
+                const totalPlanes = sizeC * sizeZ;
+                let loadedPlanes = 0;
+
+                function notifyPlaneLoaded() {
+                    loadedPlanes += 1;
+                    if (loadedPlanes === totalPlanes) {
+                        closeDialog();
+                    } else {
+                        openDialog();
+                        document.getElementById("window-dialog-title").innerHTML = `Loading Image...`;
+                        document.getElementById("window-dialog-container").innerHTML = `Loading Image planes: ${loadedPlanes} / ${totalPlanes}`;
+                    }
+                }
+
+                async function getRawChunk(zarrArray, chunk) {
+                    const data = await zarrArray.getRawChunk(chunk)
+                    notifyPlaneLoaded()
+                    return data;
+                }
+
+                // FIXME: Ignore sizeT for now
                 const zarrData = await Promise.all(
                     range(sizeZ).flatMap(z => {
                         return (range(sizeC).map(c => {
-                            return zarr_arr.getRawChunk([0, c, z, 0, 0])
+                            return getRawChunk(zarr_arr, [0, c, z, 0, 0])
                         }))
                     })
                 );
                 console.log('zarrData', zarrData)
 
-                // 3 channels viewed separately
-                // merge into one array
+                // merge planes into one array
                 const zarrPlanes = mergeArrays(zarrData.map(d => d.data));
                 console.log('zarrPlanes', zarrPlanes);
 
