@@ -255,14 +255,16 @@ document.addEventListener("DOMContentLoaded", async event => {
     window.runPlugin = name => {
         imjoy.pm.plugin_names[name.replaceAll("`", "'")].api.run({ config: {}, data: {} });
     };
+
+
+
+    // fix mobile display
+    window.onresize = () => {
+        document.body.height = window.innerHeight;
+        document
+            .getElementById("whiteboard")
+            .style.setProperty("height", window.innerHeight + "px", "important");
+    };
+    window.onresize();
+
 });
-
-
-// fix mobile display
-window.onresize = () => {
-    document.body.height = window.innerHeight;
-    document
-        .getElementById("whiteboard")
-        .style.setProperty("height", window.innerHeight + "px", "important");
-};
-window.onresize();
