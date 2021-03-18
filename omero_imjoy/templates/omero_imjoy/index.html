@@ -49,7 +49,6 @@
     <!-- Relative links allows testing without Django -->
     <!-- When served by Django, the URLs will be updated -->
     <script src="../../static/omero_imjoy/util.js"></script>
-    <!-- <script src="../../static/omero_imjoy/imjoy.js"></script> -->
     <link rel="stylesheet" href="../../static/omero_imjoy/imjoy.css">
 </head>
 
@@ -88,10 +87,6 @@
                 imjoy_api: { } // override some imjoy API functions here
             })
             const api = app.imjoy.api;
-            // load built-in plugins
-            for (const p of builtinPlugins) {
-                app.loadPlugin(p);
-            }
 
             const zarr = await import('https://unpkg.com/@manzt/zarr-lite/index.js')
             const HTTPStore = await getStore()
@@ -141,7 +136,6 @@
 
                 function notifyPlaneLoaded() {
                     loadedPlanes += 1;
-                    console.log(loadedPlanes)
                     api.showProgress(loadedPlanes/totalPlanes)
                     api.showMessage(`Loading Image planes: ${loadedPlanes} / ${totalPlanes}`)
                 }
@@ -182,6 +176,11 @@
 
                 await ij.runMacro(`run("Stack to Hyperstack...", "order=xyzct channels=${sizeC} slices=${sizeZ} frames=${sizeT} display=Grayscale");`)
 
+                // load built-in plugins
+                // note some plugins will require ImageJ.JS so we load them after ImageJ.JS
+                for (const p of builtinPlugins) {
+                    app.loadPlugin(p);
+                }
             }
 
 
