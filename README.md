@@ -1,7 +1,12 @@
 
 # OMERO ImJoy
 
-An experimental OMERO.web plugin to open images in ImJoy and/or ImageJ.JS.
+An experimental OMERO.web plugin to open images in ImageJ.JS.
+
+Multi-dimensional images supported, but not 'Big' tiled images.
+
+This uses [zarr-lite](https://github.com/manzt/zarr-lite) to load images as
+zarr from OMERO.
 
 See discussion at https://forum.image.sc/t/open-an-image-from-omero-in-imagej-js/47747/8
 
@@ -19,6 +24,11 @@ This app is a plugin of OMERO.web and needs to be installed in the same environm
 
     # Then restart your omero-web server
 
+To open a OMERO image, go to:
+
+    your-omero-server/imjoy/?image=ID
+
+<img src="https://user-images.githubusercontent.com/900055/111672566-fe778780-8811-11eb-8a30-0a3b99cb1954.png"/>
 
 # Dev testing without Django
 

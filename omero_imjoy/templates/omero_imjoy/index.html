@@ -122,8 +122,21 @@
                 console.log('zarr_arr', zarr_arr);
                 let [sizeT, sizeC, sizeZ, sizeY, sizeX] = zarr_arr.shape;
 
-                // FIXME: Ignore sizeT for now
-                const totalPlanes = sizeC * sizeZ;
+                dtypes = {
+                    "|i1": "int8",
+                    "|u1": "uint8",
+                    "<i2": "int16",
+                    "<u2": "uint16",
+                    "<i4": "int32",
+                    "<u4": "uint32",
+                    "<f4": "float32",
+                    "<f8": "float64"
+                }
+                const dtype = dtypes[zarr_arr.dtype] || "uint16";
+                console.log('dtype', zarr_arr.dtype, dtype);
+
+
+                const totalPlanes = sizeC * sizeZ * sizeT;
                 let loadedPlanes = 0;
 
                 function notifyPlaneLoaded() {
@@ -141,11 +154,12 @@
                 // init ImageJ viewer
                 const ijPromise = api.createWindow({ src: "https://ij.imjoy.io", name: "ImageJ.JS", fullscreen: true})
 
-                // FIXME: Ignore sizeT for now
                 const zarrData = await Promise.all(
-                    range(sizeZ).flatMap(z => {
-                        return (range(sizeC).map(c => {
-                            return getRawChunk(zarr_arr, [0, c, z, 0, 0])
+                    range(sizeT).flatMap(t => {
+                        return (range(sizeC).flatMap(c => {
+                            return (range(sizeZ).map(z => {
+                                return getRawChunk(zarr_arr, [t, c, z, 0, 0])
+                            }))
                         }))
                     })
                 );
@@ -159,7 +173,11 @@
                 console.log('zarrPlanes', zarrPlanes);
 
                 const ij = await ijPromise;
-                await ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint16', _rshape: [sizeZ * sizeC, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
+
+                await ij.viewImage({ _rtype: 'ndarray', _rdtype: dtype, _rshape: [sizeZ * sizeC * sizeT, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
+
+                await ij.runMacro(`run("Stack to Hyperstack...", "order=xyzct channels=${sizeC} slices=${sizeZ} frames=${sizeT} display=Grayscale");`)
+
             }
 
 

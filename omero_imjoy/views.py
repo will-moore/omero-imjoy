@@ -90,7 +90,6 @@ def zarr_zarray(request, iid, level, conn=None, **kwargs):
 
     image = conn.getObject("Image", iid)
     shape = [getattr(image, 'getSize' + dim)() for dim in ('TCZYX')]
-    print('shape', shape)
     chunks = (1, 1, 1, shape[3], shape[4])
 
     ptype = image.getPrimaryPixels().getPixelsType().getValue()
