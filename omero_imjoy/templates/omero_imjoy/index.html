@@ -152,6 +152,7 @@
                     return data;
                 }
                 // init ImageJ viewer
+                // we didn't add await here because we want to load image and the data simultaneously
                 const ijPromise = api.createWindow({ src: "https://ij.imjoy.io", name: "ImageJ.JS", fullscreen: true})
 
                 const zarrData = await Promise.all(
@@ -163,17 +164,20 @@
                         }))
                     })
                 );
+
                 // hide the progress bar
-                api.showProgress(0)
-                api.showMessage(`Image planes loaded successfully.`)
+                await api.showProgress(0)
+                await api.showMessage(`Image planes loaded successfully.`)
                 console.log('zarrData', zarrData)
 
                 // merge planes into one array
                 const zarrPlanes = mergeArrays(zarrData.map(d => d.data));
                 console.log('zarrPlanes', zarrPlanes);
 
+                // now make sure ImageJ viewer is loaded
                 const ij = await ijPromise;
 
+                // encode the image data as an ndarray
                 await ij.viewImage({ _rtype: 'ndarray', _rdtype: dtype, _rshape: [sizeZ * sizeC * sizeT, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
 
                 await ij.runMacro(`run("Stack to Hyperstack...", "order=xyzct channels=${sizeC} slices=${sizeZ} frames=${sizeT} display=Grayscale");`)
@@ -188,7 +192,11 @@
                 const image_id = image_ids[0];
                 const zarr_url = `${ getBaseUrl() }/imjoy/zarr/${ image_id }/`
                 console.log('load', zarr_url);
-                loadZarrImage(zarr_url);
+                loadZarrImage(zarr_url).then(()=>{
+                    api.showMessage("Image loaded successfully.")
+                }).catch((e)=>{
+                    api.alert(`Failed to load image, error: ${e}`)
+                });
             } else {
                 const source = getUrlParameter('source');
                 if (source) {
