@@ -158,8 +158,8 @@
 
                 // FIXME: Ignore sizeT for now
                 const zarrData = await Promise.all(
-                    range(sizeZ).flatMap(z => {
-                        return (range(sizeC).map(c => {
+                    range(sizeC).flatMap(c => {
+                        return (range(sizeZ).map(z => {
                             return getRawChunk(zarr_arr, [0, c, z, 0, 0])
                         }))
                     })
@@ -174,6 +174,8 @@
                 const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
 
                 ij.viewImage({ _rtype: 'ndarray', _rdtype: 'uint16', _rshape: [sizeZ * sizeC, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
+
+                ij.runMacro(`run("Stack to Hyperstack...", "order=xyzct channels=${sizeC} slices=${sizeZ} frames=${sizeT} display=Grayscale");`)
 
                 document.getElementById("loading").style.display = "none";
             }
