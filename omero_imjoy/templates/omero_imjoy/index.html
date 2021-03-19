@@ -45,55 +45,16 @@
     <meta name="theme-color" content="#f5f9ff" />
 
     <script src="https://lib.imjoy.io/imjoy-loader.js"></script>
-    <link rel="stylesheet" href="https://lib.imjoy.io/static/joy.css" />
-    <link rel="stylesheet" href="https://static.imjoy.io/spectre.css/spectre.min.css" />
-    <link rel="stylesheet" href="https://static.imjoy.io/spectre.css/spectre-exp.min.css" />
-    <link rel="stylesheet" href="https://static.imjoy.io/spectre.css/spectre-icons.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.15.3/axios.min.js"></script>
 
     <!-- Relative links allows testing without Django -->
     <!-- When served by Django, the URLs will be updated -->
     <script src="../../static/omero_imjoy/util.js"></script>
-    <script src="../../static/omero_imjoy/imjoy.js"></script>
     <link rel="stylesheet" href="../../static/omero_imjoy/imjoy.css">
 </head>
 
-<body>
-    <div class="modal" id="dialog-container">
-        <a href="#" class="modal-overlay" aria-label="Close"></a>
-        <div class="modal-container">
-            <div class="modal-header">
-                <a href="#" class="btn btn-clear float-right" aria-label="Close" onclick="closeDialog()"></a>
-                <div class="modal-title h5" id="window-dialog-title">Dialog</div>
-            </div>
-            <div class="modal-body">
-                <div class="content">
-                    <div id="window-dialog-container"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <header class="navbar">
-        <section class="navbar-section" id="logo">
-            <a href="/">
-                <img class="site-title-small" src="https://imjoy.io/static/img/imjoy-logo-black.svg" alt="ImJoy" />
-            </a>
-            <!-- <a href="https://imjoy.io/docs" target="_blank" class="btn btn-link">Docs</a>
-            <a href="https://github.com/imjoy-team/ImJoy" target="_blank" class="btn btn-link">GitHub</a> -->
-        </section>
-        <section class="navbar-section" id="windows-menu" style="flex: 0 1 0;">
-            <div class="dropdown dropdown-right">
-                <a class="btn btn-sm more-btn dropdown-toggle" tabindex="0"><i class="icon icon-more-horiz"></i></a>
-                <ul class="menu" id="plugin-menu"></ul>
-            </div>
-        </section>
-        <progress class="progress" style="display: none;" id="progress" value="100" max="100"></progress>
-    </header>
-    <div class="loading loading-lg floating" id="loading"></div>
-    <div class="whiteboard" id="whiteboard">
-        <img src="https://imjoy.io/static/img/imjoy-io-icon.svg" id="empty-img" />
-    </div>
-
+<body style="height: 100vh;">
+    <div id="window-container" style="height: calc( 100% - 30px);"></div>
+    <div id="menu-container"></div>
     <script>
 
         async function getStore() {
@@ -104,7 +65,28 @@
             return HTTPStore;
         }
 
+        const builtinPlugins = [
+            "https://gist.githubusercontent.com/oeway/9c78d23c101f468e723888d05b6fac6d/raw/ImageJScriptEditor.imjoy.html",
+            "https://gist.githubusercontent.com/oeway/c9592f23c7ee147085f0504d2f3e993a/raw/CellPose-ImageJ.imjoy.html",
+            "https://gist.githubusercontent.com/oeway/e5c980fbf6582f25fde795262a7e33ec/raw/itk-vtk-viewer-imagej.imjoy.html"
+        ];
+
         document.addEventListener("DOMContentLoaded", async event => {
+            const app = await imjoyLoader.loadImJoyBasicApp({
+                version: "0.13.71", // pin the version of imjoy-core
+                process_url_query: true,
+                show_window_title: false,
+                show_progress_bar: true,
+                show_empty_window: true,
+                menu_style: { position: "absolute", right: 0, top: "2px" },
+                window_style: {width: '100%', height: '100%'},
+                main_container: null,
+                menu_container: "menu-container",
+                window_manager_container: "window-container",
+                window_manager_type: "simple",
+                imjoy_api: { } // override some imjoy API functions here
+            })
+            const api = app.imjoy.api;
 
             const zarr = await import('https://unpkg.com/@manzt/zarr-lite/index.js')
             const HTTPStore = await getStore()
@@ -154,13 +136,8 @@
 
                 function notifyPlaneLoaded() {
                     loadedPlanes += 1;
-                    if (loadedPlanes === totalPlanes) {
-                        closeDialog();
-                    } else {
-                        openDialog();
-                        document.getElementById("window-dialog-title").innerHTML = `Loading Image...`;
-                        document.getElementById("window-dialog-container").innerHTML = `Loading Image planes: ${loadedPlanes} / ${totalPlanes}`;
-                    }
+                    api.showProgress(loadedPlanes/totalPlanes)
+                    api.showMessage(`Loading Image planes: ${loadedPlanes} / ${totalPlanes}`)
                 }
 
                 async function getRawChunk(zarrArray, chunk) {
@@ -168,6 +145,9 @@
                     notifyPlaneLoaded()
                     return data;
                 }
+                // init ImageJ viewer
+                // we didn't add await here because we want to load image and the data simultaneously
+                const ijPromise = api.createWindow({ src: "https://ij.imjoy.io", name: "ImageJ.JS", fullscreen: true})
 
                 const zarrData = await Promise.all(
                     range(sizeT).flatMap(t => {
@@ -178,20 +158,29 @@
                         }))
                     })
                 );
+
+                // hide the progress bar
+                await api.showProgress(0)
+                await api.showMessage(`Image planes loaded successfully.`)
                 console.log('zarrData', zarrData)
 
                 // merge planes into one array
                 const zarrPlanes = mergeArrays(zarrData.map(d => d.data));
                 console.log('zarrPlanes', zarrPlanes);
 
-                // init ImageJ viewer
-                const ij = await imjoy.pm.imjoy_api.createWindow(null, { src: "https://ij.imjoy.io" })
+                // now make sure ImageJ viewer is loaded
+                const ij = await ijPromise;
 
-                ij.viewImage({ _rtype: 'ndarray', _rdtype: dtype, _rshape: [sizeZ * sizeC * sizeT, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
+                // encode the image data as an ndarray
+                await ij.viewImage({ _rtype: 'ndarray', _rdtype: dtype, _rshape: [sizeZ * sizeC * sizeT, sizeY, sizeX, 1], _rvalue: zarrPlanes.buffer });
 
-                ij.runMacro(`run("Stack to Hyperstack...", "order=xyzct channels=${sizeC} slices=${sizeZ} frames=${sizeT} display=Grayscale");`)
+                await ij.runMacro(`run("Stack to Hyperstack...", "order=xyzct channels=${sizeC} slices=${sizeZ} frames=${sizeT} display=Grayscale");`)
 
-                document.getElementById("loading").style.display = "none";
+                // load built-in plugins
+                // note some plugins will require ImageJ.JS so we load them after ImageJ.JS
+                for (const p of builtinPlugins) {
+                    app.loadPlugin(p);
+                }
             }
 
 
@@ -202,7 +191,11 @@
                 const image_id = image_ids[0];
                 const zarr_url = `${ getBaseUrl() }/imjoy/zarr/${ image_id }/`
                 console.log('load', zarr_url);
-                loadZarrImage(zarr_url);
+                loadZarrImage(zarr_url).then(()=>{
+                    api.showMessage("Image loaded successfully.")
+                }).catch((e)=>{
+                    api.alert(`Failed to load image, error: ${e}`)
+                });
             } else {
                 const source = getUrlParameter('source');
                 if (source) {
